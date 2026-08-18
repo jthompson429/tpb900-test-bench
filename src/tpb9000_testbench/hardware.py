@@ -1,0 +1,94 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import Enum
+from typing import Protocol
+
+from .config import LimitConfig, MotorConfig
+
+
+class Direction(Enum):
+    OPEN = "OPEN"
+    CLOSE = "CLOSE"
+
+
+@dataclass(frozen=True)
+class LimitState:
+    open_active: bool
+    closed_active: bool
+
+    @property
+    def mechanism_state(self) -> str:
+        if self.open_active and self.closed_active:
+            return "FAULT: BOTH LIMITS ACTIVE"
+        if self.open_active:
+            return "OPEN"
+        if self.closed_active:
+            return "CLOSED"
+        return "BETWEEN LIMITS"
+
+
+class Hardware(Protocol):
+    def limits(self) -> LimitState: ...
+    def drive(self, direction: Direction) -> None: ...
+    def stop(self) -> None: ...
+    def close(self) -> None: ...
+
+
+class GpioHardware:
+    """gpiozero adapter. Constructor leaves every motor output off."""
+
+    def __init__(self, motor: MotorConfig, limits: LimitConfig):
+        try:
+            from gpiozero import Button, DigitalOutputDevice, PWMOutputDevice
+        except ImportError as exc:
+            raise RuntimeError("gpiozero is required on Raspberry Pi; install the 'pi' extra") from exc
+
+        self._cfg = motor
+        self._devices: list[object] = []
+        try:
+            self._rpwm = PWMOutputDevice(motor.rpwm_gpio, frequency=motor.pwm_frequency_hz, initial_value=0)
+            self._devices.append(self._rpwm)
+            self._lpwm = PWMOutputDevice(motor.lpwm_gpio, frequency=motor.pwm_frequency_hz, initial_value=0)
+            self._devices.append(self._lpwm)
+            self._ren = DigitalOutputDevice(motor.right_enable_gpio, initial_value=False)
+            self._devices.append(self._ren)
+            self._len = DigitalOutputDevice(motor.left_enable_gpio, initial_value=False)
+            self._devices.append(self._len)
+            # NC switch opens at the limit. A pull-up makes an open contact read high;
+            # therefore active_low=true means 'pressed' is represented by !is_pressed.
+            self._open = Button(limits.open_gpio, pull_up=True, bounce_time=limits.bounce_time_seconds)
+            self._devices.append(self._open)
+            self._closed = Button(limits.closed_gpio, pull_up=True, bounce_time=limits.bounce_time_seconds)
+            self._devices.append(self._closed)
+            self._active_low = limits.active_low
+            self.stop()
+        except Exception:
+            for device in reversed(self._devices):
+                device.close()
+            raise
+
+    def _active(self, button: object) -> bool:
+        contact_closed = bool(getattr(button, "is_pressed"))
+        return not contact_closed if self._active_low else contact_closed
+
+    def limits(self) -> LimitState:
+        return LimitState(self._active(self._open), self._active(self._closed))
+
+    def drive(self, direction: Direction) -> None:
+        self.stop()
+        use_rpwm = (direction is Direction.OPEN) == self._cfg.open_uses_rpwm
+        self._ren.on()
+        self._len.on()
+        (self._rpwm if use_rpwm else self._lpwm).value = self._cfg.duty_cycle
+
+    def stop(self) -> None:
+        self._rpwm.off()
+        self._lpwm.off()
+        self._ren.off()
+        self._len.off()
+
+    def close(self) -> None:
+        self.stop()
+        for device in reversed(self._devices):
+            device.close()

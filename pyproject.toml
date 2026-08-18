@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tpb9000-testbench"
+version = "0.1.0"
+description = "Safety-focused endurance tester for the TPB9000 feeder-cover mechanism"
+requires-python = ">=3.11"
+dependencies = ["PyYAML>=6.0,<7"]
+
+[project.optional-dependencies]
+pi = ["gpiozero>=2.0,<3"]
+test = ["pytest>=8,<9"]
+
+[project.scripts]
+tpb9000-testbench = "tpb9000_testbench.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
