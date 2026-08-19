@@ -1,5 +1,7 @@
 # TPB9000 Test Bench
 
+[![Tests](https://github.com/jthompson429/tpb900-test-bench/actions/workflows/tests.yml/badge.svg)](https://github.com/jthompson429/tpb900-test-bench/actions/workflows/tests.yml)
+
 A deliberately small, safety-focused Raspberry Pi application for repeatedly exercising the TPB9000 feeder-cover motor and mechanism. It is a bench fixture, not production feeder firmware. It provides limit-aware manual jogging, automated close/open cycles, travel-time logging, timeouts, summaries, and safe shutdown.
 
 > **Do not connect the mechanism until the direction-selective hardware interlocks described below have been built and tested.** Raspberry Pi GPIO and this program are secondary protection only.
