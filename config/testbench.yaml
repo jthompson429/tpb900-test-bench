@@ -24,3 +24,9 @@ limits:
 logging:
   directory: logs
 
+# Used only when the CLI is explicitly started with --simulate.
+simulation:
+  open_travel_seconds: 0.25
+  close_travel_seconds: 0.25
+  endpoint_pause_seconds: 0.05
+  fault_timeout_seconds: 0.75

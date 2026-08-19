@@ -1,5 +1,7 @@
 # TPB9000 Test Bench
 
+[![Tests](https://github.com/jthompson429/tpb900-test-bench/actions/workflows/tests.yml/badge.svg)](https://github.com/jthompson429/tpb900-test-bench/actions/workflows/tests.yml)
+
 A deliberately small, safety-focused Raspberry Pi application for repeatedly exercising the TPB9000 feeder-cover motor and mechanism. It is a bench fixture, not production feeder firmware. It provides limit-aware manual jogging, automated close/open cycles, travel-time logging, timeouts, summaries, and safe shutdown.
 
 > **Do not connect the mechanism until the direction-selective hardware interlocks described below have been built and tested.** Raspberry Pi GPIO and this program are secondary protection only.
@@ -90,7 +92,32 @@ The application does not start at boot and never moves on startup. It initialize
 .venv/bin/tpb9000-testbench test --cycles 100
 ```
 
-Jog commands stop at the relevant limit or requested/configured safety time. Start with sub-second/one-second jogs while watching the mechanism. A jog safety-timeout is reported as an error because reaching an endpoint is the only normal movement completion. `Ctrl+C` and SIGTERM immediately request STOP; every command also disables PWM/enables in `finally` cleanup. A failed or aborted test exits and cannot auto-resume. Starting again requires a new operator command.
+### Simulation mode
+
+Use the explicit `--simulate` global option to exercise the full controller, CLI, logging, summaries, and limit transitions without importing `gpiozero` or touching Raspberry Pi pins:
+
+```bash
+.venv/bin/tpb9000-testbench --simulate status
+.venv/bin/tpb9000-testbench --simulate --simulate-start between status
+.venv/bin/tpb9000-testbench --simulate test --cycles 25
+.venv/bin/tpb9000-testbench --simulate --simulate-fault stall-close test --cycles 1
+```
+
+Global options must appear before the command. The simulated starting position can be `open` (default), `between`, or `closed`. Virtual OPEN/CLOSE travel times, shortened endpoint pauses, and a short fault-test timeout are configured under `simulation` in `config/testbench.yaml`; these values have no effect on real GPIO mode. Simulation prints a prominent banner and real GPIO remains the default, so commissioning commands are never silently redirected to a model. Simulated test runs write ordinary log and summary files to `logs/` and are useful for verifying configuration and operator procedure, but they do not validate wiring, motor direction, interlocks, or mechanics.
+
+Use one explicit `--simulate-fault` value to verify failure handling:
+
+| Fault | Simulated behavior | Expected controller result |
+|---|---|---|
+| `stall-open` | OPEN command produces no movement | OPEN timeout / FAIL |
+| `stall-close` | CLOSE command produces no movement | CLOSE timeout / FAIL |
+| `open-limit-missing` | OPEN endpoint never activates its switch | OPEN timeout / FAIL |
+| `closed-limit-missing` | CLOSED endpoint never activates its switch | CLOSE timeout / FAIL |
+| `both-limits-active` | Both switches always report active | Impossible-state / FAIL |
+
+The default is `none`. Fault injection is rejected unless `--simulate` is also present. These scenarios are intentionally deterministic: they confirm motor-stop cleanup, nonzero CLI exit status, fault logging, and `FAIL` summary generation.
+
+Jog commands stop normally at the relevant limit or when an explicit `--seconds` duration completes. Start with sub-second/one-second jogs while watching the mechanism. The requested duration must be shorter than `jog_timeout_seconds`. If `--seconds` is omitted and no limit is reached, the configured maximum is treated as a safety fault rather than a successful jog. `Ctrl+C` and SIGTERM immediately request STOP; every command also disables PWM/enables in `finally` cleanup. A failed or aborted test exits and cannot auto-resume. Starting again requires a new operator command.
 
 Configuration defaults are 25 cycles, 20-second endpoint pauses, 30-second close/open travel timeouts, a 5-second maximum jog, 20 ms polling, and 65% PWM. Tune PWM only after measuring reliable starting torque and checking driver/motor heating.
 
@@ -135,8 +162,10 @@ Tests do not require Raspberry Pi hardware:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -e '.[test]'
+.venv/bin/pip install '.[test]'
 .venv/bin/pytest
 ```
 
-The fake hardware tests cover config validation, target-limit stopping, timeout cleanup, impossible dual-limit failure, and a complete close/open cycle. Final acceptance still requires the staged physical commissioning above.
+Reinstall after changing source files. A regular wheel install is used intentionally because Python 3.14 ignores the hidden `.pth` filename currently produced by some setuptools editable installs.
+
+The hardware-independent tests cover config validation, target-limit stopping, timeout cleanup, impossible dual-limit failure, requested-duration jogs, simulated position/limit transitions, injected stalls/missing limits, simulated CLI operation, PASS/FAIL log generation, and complete close/open cycles. Final acceptance still requires the staged physical commissioning above.

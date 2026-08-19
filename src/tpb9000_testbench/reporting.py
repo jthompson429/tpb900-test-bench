@@ -41,7 +41,7 @@ class TestResult:
 
 def create_test_logger(directory: Path) -> tuple[logging.Logger, Path]:
     directory.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     path = directory / f"test-{stamp}.log"
     logger = logging.getLogger(f"tpb9000.{stamp}")
     logger.setLevel(logging.INFO)
@@ -57,4 +57,3 @@ def save_summary(result: TestResult, log_path: Path) -> Path:
     path = log_path.with_name(log_path.stem + "-summary.json")
     path.write_text(json.dumps(result.summary(), indent=2) + "\n")
     return path
-

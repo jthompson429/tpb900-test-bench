@@ -3,16 +3,23 @@ from __future__ import annotations
 import argparse
 import signal
 import sys
+from dataclasses import replace
 
 from .config import ConfigurationError, load_config
 from .controller import Controller, OperatorAbort, TestBenchFault
-from .hardware import Direction, GpioHardware
+from .hardware import Direction, GpioHardware, SimulatedHardware
 from .reporting import create_test_logger, save_summary
 
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="TPB9000 feeder-cover test bench")
     p.add_argument("--config", default="config/testbench.yaml")
+    p.add_argument("--simulate", action="store_true",
+                   help="use the in-memory mechanism model; never access GPIO")
+    p.add_argument("--simulate-start", choices=("open", "between", "closed"), default="open",
+                   help="initial mechanism position in simulation (default: open)")
+    p.add_argument("--simulate-fault", choices=tuple(sorted(SimulatedHardware.FAULTS)), default="none",
+                   help="inject one simulation-only failure (default: none)")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("status", help="show limit and motor state")
     for name in ("jog-open", "jog-close"):
@@ -37,7 +44,19 @@ def main(argv: list[str] | None = None) -> int:
     controller = None
     try:
         config = load_config(args.config)
-        hardware = GpioHardware(config.motor, config.limits)
+        if args.simulate:
+            sim = config.simulation
+            hardware = SimulatedHardware(sim.open_travel_seconds, sim.close_travel_seconds,
+                                         start=args.simulate_start, fault=args.simulate_fault)
+            config = replace(config, pause_after_close_seconds=sim.endpoint_pause_seconds,
+                             pause_after_open_seconds=sim.endpoint_pause_seconds,
+                             max_close_travel_seconds=sim.fault_timeout_seconds,
+                             max_open_travel_seconds=sim.fault_timeout_seconds)
+            print(f"SIMULATION MODE - no GPIO will be accessed; fault: {args.simulate_fault}")
+        else:
+            if args.simulate_fault != "none":
+                raise ValueError("--simulate-fault requires --simulate")
+            hardware = GpioHardware(config.motor, config.limits)
         controller = Controller(hardware, config)
         def stop_now(_signum: int, _frame: object) -> None:
             controller.request_stop()
@@ -48,8 +67,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command.startswith("jog-"):
             direction = Direction.OPEN if args.command == "jog-open" else Direction.CLOSE
-            elapsed = controller.jog(direction, args.seconds)
-            print(f"Stopped after {elapsed:.2f} sec")
+            result = controller.jog(direction, args.seconds)
+            print(f"Stopped after {result.elapsed_seconds:.2f} sec: {result.reason.value}")
             return 0
         logger, log_path = create_test_logger(config.log_directory)
         controller.logger = logger
