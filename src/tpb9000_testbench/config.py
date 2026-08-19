@@ -35,6 +35,7 @@ class SimulationConfig:
     open_travel_seconds: float
     close_travel_seconds: float
     endpoint_pause_seconds: float
+    fault_timeout_seconds: float
 
 
 @dataclass(frozen=True)
@@ -106,6 +107,7 @@ def load_config(path: str | Path) -> TestBenchConfig:
             open_travel_seconds=_positive(simulation, "open_travel_seconds"),
             close_travel_seconds=_positive(simulation, "close_travel_seconds"),
             endpoint_pause_seconds=_nonnegative(simulation, "endpoint_pause_seconds"),
+            fault_timeout_seconds=_positive(simulation, "fault_timeout_seconds"),
         ),
         log_directory=log_dir,
     )

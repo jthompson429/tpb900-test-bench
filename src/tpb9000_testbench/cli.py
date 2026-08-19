@@ -18,6 +18,8 @@ def parser() -> argparse.ArgumentParser:
                    help="use the in-memory mechanism model; never access GPIO")
     p.add_argument("--simulate-start", choices=("open", "between", "closed"), default="open",
                    help="initial mechanism position in simulation (default: open)")
+    p.add_argument("--simulate-fault", choices=tuple(sorted(SimulatedHardware.FAULTS)), default="none",
+                   help="inject one simulation-only failure (default: none)")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("status", help="show limit and motor state")
     for name in ("jog-open", "jog-close"):
@@ -45,11 +47,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.simulate:
             sim = config.simulation
             hardware = SimulatedHardware(sim.open_travel_seconds, sim.close_travel_seconds,
-                                         start=args.simulate_start)
+                                         start=args.simulate_start, fault=args.simulate_fault)
             config = replace(config, pause_after_close_seconds=sim.endpoint_pause_seconds,
-                             pause_after_open_seconds=sim.endpoint_pause_seconds)
-            print("SIMULATION MODE - no GPIO will be accessed")
+                             pause_after_open_seconds=sim.endpoint_pause_seconds,
+                             max_close_travel_seconds=sim.fault_timeout_seconds,
+                             max_open_travel_seconds=sim.fault_timeout_seconds)
+            print(f"SIMULATION MODE - no GPIO will be accessed; fault: {args.simulate_fault}")
         else:
+            if args.simulate_fault != "none":
+                raise ValueError("--simulate-fault requires --simulate")
             hardware = GpioHardware(config.motor, config.limits)
         controller = Controller(hardware, config)
         def stop_now(_signum: int, _frame: object) -> None:

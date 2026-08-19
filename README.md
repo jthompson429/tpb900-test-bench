@@ -98,9 +98,22 @@ Use the explicit `--simulate` global option to exercise the full controller, CLI
 .venv/bin/tpb9000-testbench --simulate status
 .venv/bin/tpb9000-testbench --simulate --simulate-start between status
 .venv/bin/tpb9000-testbench --simulate test --cycles 25
+.venv/bin/tpb9000-testbench --simulate --simulate-fault stall-close test --cycles 1
 ```
 
-Global options must appear before the command. The simulated starting position can be `open` (default), `between`, or `closed`. Virtual OPEN/CLOSE travel times and shortened endpoint pauses are configured under `simulation` in `config/testbench.yaml`; these values have no effect on real GPIO mode. Simulation prints a prominent banner and real GPIO remains the default, so commissioning commands are never silently redirected to a model. Simulated test runs write ordinary log and summary files to `logs/` and are useful for verifying configuration and operator procedure, but they do not validate wiring, motor direction, interlocks, or mechanics.
+Global options must appear before the command. The simulated starting position can be `open` (default), `between`, or `closed`. Virtual OPEN/CLOSE travel times, shortened endpoint pauses, and a short fault-test timeout are configured under `simulation` in `config/testbench.yaml`; these values have no effect on real GPIO mode. Simulation prints a prominent banner and real GPIO remains the default, so commissioning commands are never silently redirected to a model. Simulated test runs write ordinary log and summary files to `logs/` and are useful for verifying configuration and operator procedure, but they do not validate wiring, motor direction, interlocks, or mechanics.
+
+Use one explicit `--simulate-fault` value to verify failure handling:
+
+| Fault | Simulated behavior | Expected controller result |
+|---|---|---|
+| `stall-open` | OPEN command produces no movement | OPEN timeout / FAIL |
+| `stall-close` | CLOSE command produces no movement | CLOSE timeout / FAIL |
+| `open-limit-missing` | OPEN endpoint never activates its switch | OPEN timeout / FAIL |
+| `closed-limit-missing` | CLOSED endpoint never activates its switch | CLOSE timeout / FAIL |
+| `both-limits-active` | Both switches always report active | Impossible-state / FAIL |
+
+The default is `none`. Fault injection is rejected unless `--simulate` is also present. These scenarios are intentionally deterministic: they confirm motor-stop cleanup, nonzero CLI exit status, fault logging, and `FAIL` summary generation.
 
 Jog commands stop normally at the relevant limit or when an explicit `--seconds` duration completes. Start with sub-second/one-second jogs while watching the mechanism. The requested duration must be shorter than `jog_timeout_seconds`. If `--seconds` is omitted and no limit is reached, the configured maximum is treated as a safety fault rather than a successful jog. `Ctrl+C` and SIGTERM immediately request STOP; every command also disables PWM/enables in `finally` cleanup. A failed or aborted test exits and cannot auto-resume. Starting again requires a new operator command.
 
@@ -153,4 +166,4 @@ python3 -m venv .venv
 
 Reinstall after changing source files. A regular wheel install is used intentionally because Python 3.14 ignores the hidden `.pth` filename currently produced by some setuptools editable installs.
 
-The hardware-independent tests cover config validation, target-limit stopping, timeout cleanup, impossible dual-limit failure, simulated position/limit transitions, simulated CLI operation, log generation, and complete close/open cycles. Final acceptance still requires the staged physical commissioning above.
+The hardware-independent tests cover config validation, target-limit stopping, timeout cleanup, impossible dual-limit failure, requested-duration jogs, simulated position/limit transitions, injected stalls/missing limits, simulated CLI operation, PASS/FAIL log generation, and complete close/open cycles. Final acceptance still requires the staged physical commissioning above.
