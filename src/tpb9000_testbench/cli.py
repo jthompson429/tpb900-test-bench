@@ -61,8 +61,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command.startswith("jog-"):
             direction = Direction.OPEN if args.command == "jog-open" else Direction.CLOSE
-            elapsed = controller.jog(direction, args.seconds)
-            print(f"Stopped after {elapsed:.2f} sec")
+            result = controller.jog(direction, args.seconds)
+            print(f"Stopped after {result.elapsed_seconds:.2f} sec: {result.reason.value}")
             return 0
         logger, log_path = create_test_logger(config.log_directory)
         controller.logger = logger

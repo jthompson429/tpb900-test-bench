@@ -1,4 +1,6 @@
-from tpb9000_testbench.controller import Controller
+import pytest
+
+from tpb9000_testbench.controller import Controller, JogStopReason, TestBenchFault as BenchFault
 from tpb9000_testbench.hardware import Direction, LimitState
 
 from fakes import FakeClock, FakeHardware
@@ -47,3 +49,35 @@ def test_one_complete_cycle(config):
     assert result.completed_cycles == 1
     assert hardware.drives == [Direction.CLOSE, Direction.OPEN]
 
+
+def test_requested_jog_duration_is_normal_stop(config):
+    hardware = FakeHardware([LimitState(False, False)])
+    clock = FakeClock()
+    result = Controller(hardware, config, clock=clock, sleeper=clock.sleep).jog(Direction.CLOSE, 0.03)
+    assert result.reason is JogStopReason.REQUESTED_DURATION_COMPLETE
+    assert result.elapsed_seconds == pytest.approx(0.03)
+    assert hardware.stop_count >= 1
+
+
+def test_jog_limit_is_normal_stop(config):
+    hardware = FakeHardware([LimitState(False, False), LimitState(False, True)])
+    clock = FakeClock()
+    result = Controller(hardware, config, clock=clock, sleeper=clock.sleep).jog(Direction.CLOSE, 0.03)
+    assert result.reason is JogStopReason.LIMIT_REACHED
+    assert result.elapsed_seconds == 0
+
+
+def test_jog_without_duration_faults_at_safety_timeout(config):
+    hardware = FakeHardware([LimitState(False, False)])
+    clock = FakeClock()
+    controller = Controller(hardware, config, clock=clock, sleeper=clock.sleep)
+    with pytest.raises(BenchFault, match="safety timeout"):
+        controller.jog(Direction.OPEN)
+    assert hardware.stop_count >= 1
+
+
+@pytest.mark.parametrize("duration", [0, -1, 5])
+def test_invalid_jog_duration_rejected(config, duration):
+    hardware = FakeHardware([LimitState(False, False)])
+    with pytest.raises(ValueError, match="Jog duration"):
+        Controller(hardware, config).jog(Direction.OPEN, duration)

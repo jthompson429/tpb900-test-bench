@@ -26,3 +26,10 @@ def test_simulated_endurance_cli(tmp_path, monkeypatch):
     assert main(["--config", str(config_path), "--simulate", "test", "--cycles", "1"]) == 0
     assert len(list((tmp_path / "logs").glob("*.log"))) == 1
     assert len(list((tmp_path / "logs").glob("*-summary.json"))) == 1
+
+
+def test_requested_simulated_jog_is_successful(monkeypatch, capsys):
+    monkeypatch.setattr("tpb9000_testbench.cli.signal.signal", lambda *_args: None)
+    assert main(["--config", CONFIG, "--simulate", "jog-close", "--seconds", "0.05"]) == 0
+    output = capsys.readouterr().out
+    assert "requested duration complete" in output

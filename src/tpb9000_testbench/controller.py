@@ -4,7 +4,9 @@ import logging
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 
 from .config import TestBenchConfig
 from .hardware import Direction, Hardware, LimitState
@@ -17,6 +19,17 @@ class TestBenchFault(RuntimeError):
 
 class OperatorAbort(KeyboardInterrupt):
     pass
+
+
+class JogStopReason(Enum):
+    LIMIT_REACHED = "limit reached"
+    REQUESTED_DURATION_COMPLETE = "requested duration complete"
+
+
+@dataclass(frozen=True)
+class JogResult:
+    elapsed_seconds: float
+    reason: JogStopReason
 
 
 class Controller:
@@ -62,9 +75,39 @@ class Controller:
         finally:
             self.hardware.stop()
 
-    def jog(self, direction: Direction, duration: float | None = None) -> float:
-        timeout = min(duration, self.config.jog_timeout_seconds) if duration is not None else self.config.jog_timeout_seconds
-        return self.move_until_limit(direction, timeout)
+    def jog(self, direction: Direction, duration: float | None = None) -> JogResult:
+        safety_timeout = self.config.jog_timeout_seconds
+        if duration is not None:
+            if duration <= 0:
+                raise ValueError("Jog duration must be greater than zero")
+            if duration >= safety_timeout:
+                raise ValueError(f"Jog duration must be shorter than the {safety_timeout:g}-second safety timeout")
+
+        started = self.clock()
+        try:
+            state = self.hardware.limits()
+            self._validate(state)
+            target_active = state.open_active if direction is Direction.OPEN else state.closed_active
+            if target_active:
+                return JogResult(0.0, JogStopReason.LIMIT_REACHED)
+            self.hardware.drive(direction)
+            while True:
+                if self.stop_event.is_set():
+                    raise OperatorAbort("STOP requested")
+                state = self.hardware.limits()
+                self._validate(state)
+                elapsed = self.clock() - started
+                if (state.open_active if direction is Direction.OPEN else state.closed_active):
+                    return JogResult(elapsed, JogStopReason.LIMIT_REACHED)
+                if duration is not None and elapsed >= duration:
+                    return JogResult(elapsed, JogStopReason.REQUESTED_DURATION_COMPLETE)
+                if elapsed >= safety_timeout:
+                    raise TestBenchFault(
+                        f"{direction.value} jog reached the {safety_timeout:g}-second safety timeout"
+                    )
+                self.sleep(self.config.poll_interval_seconds)
+        finally:
+            self.hardware.stop()
 
     def run_test(self, cycles: int) -> TestResult:
         if cycles <= 0:
