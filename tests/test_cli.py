@@ -54,3 +54,23 @@ def test_simulated_stall_produces_failed_summary(tmp_path, monkeypatch):
 def test_fault_injection_requires_simulation(capsys):
     assert main(["--config", CONFIG, "--simulate-fault", "stall-close", "status"]) == 2
     assert "requires --simulate" in capsys.readouterr().err
+
+
+def test_simulated_doctor_passes_between_limits(monkeypatch, capsys):
+    monkeypatch.setattr("tpb9000_testbench.cli.signal.signal", lambda *_args: None)
+    code = main(["--config", CONFIG, "--simulate", "--simulate-start", "between", "doctor"])
+    assert code == 0
+    output = capsys.readouterr().out
+    assert "Doctor result:             PASS" in output
+    assert "Mechanism state:           BETWEEN LIMITS" in output
+
+
+def test_simulated_doctor_fails_both_limits(monkeypatch, capsys):
+    monkeypatch.setattr("tpb9000_testbench.cli.signal.signal", lambda *_args: None)
+    code = main([
+        "--config", CONFIG, "--simulate", "--simulate-fault", "both-limits-active", "doctor",
+    ])
+    assert code == 2
+    output = capsys.readouterr().out
+    assert "Doctor result:             FAIL" in output
+    assert "FAULT: Both limit switches are active" in output

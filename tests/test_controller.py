@@ -81,3 +81,18 @@ def test_invalid_jog_duration_rejected(config, duration):
     hardware = FakeHardware([LimitState(False, False)])
     with pytest.raises(ValueError, match="Jog duration"):
         Controller(hardware, config).jog(Direction.OPEN, duration)
+
+
+def test_doctor_passes_between_limits_without_driving(config):
+    hardware = FakeHardware([LimitState(False, False)])
+    report = Controller(hardware, config).doctor()
+    assert report.passed
+    assert report.limits.mechanism_state == "BETWEEN LIMITS"
+    assert hardware.drives == []
+
+
+def test_doctor_fails_impossible_limit_state(config):
+    hardware = FakeHardware([LimitState(True, True)])
+    report = Controller(hardware, config).doctor()
+    assert not report.passed
+    assert "Both limit switches are active" in report.issues

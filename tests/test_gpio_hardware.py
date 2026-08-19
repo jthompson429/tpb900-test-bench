@@ -27,6 +27,7 @@ def gpio_hardware(config, mock_pin_factory):
 
 
 def test_startup_leaves_all_motor_outputs_safe(config, gpio_hardware, mock_pin_factory):
+    assert gpio_hardware.motor_is_stopped()
     assert mock_pin_factory.pin(config.motor.rpwm_gpio).state == 0
     assert mock_pin_factory.pin(config.motor.lpwm_gpio).state == 0
     assert mock_pin_factory.pin(config.motor.right_enable_gpio).state == 0
@@ -73,6 +74,7 @@ def test_stop_disables_pwm_and_both_enables(config, gpio_hardware, mock_pin_fact
     assert mock_pin_factory.pin(config.motor.lpwm_gpio).state == 0
     assert mock_pin_factory.pin(config.motor.right_enable_gpio).state == 0
     assert mock_pin_factory.pin(config.motor.left_enable_gpio).state == 0
+    assert gpio_hardware.motor_is_stopped()
 
 
 def test_switching_direction_stops_old_pwm_first(config, gpio_hardware, mock_pin_factory):

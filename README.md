@@ -86,11 +86,14 @@ The application does not start at boot and never moves on startup. It initialize
 
 ```bash
 .venv/bin/tpb9000-testbench status
+.venv/bin/tpb9000-testbench doctor
 .venv/bin/tpb9000-testbench jog-open --seconds 1
 .venv/bin/tpb9000-testbench jog-close --seconds 1
 .venv/bin/tpb9000-testbench test
 .venv/bin/tpb9000-testbench test --cycles 100
 ```
+
+Run `doctor` after installation and before any jog. It loads and validates the configuration, initializes the selected backend, confirms that all commanded motor outputs are OFF, applies STOP and confirms they remain OFF, reads both limit inputs, and rejects the impossible both-active state. It never issues an OPEN or CLOSE drive command. `BETWEEN LIMITS` is a valid preflight result. A passing doctor check validates software-visible GPIO initialization only; it does not prove motor direction, contact ratings, level shifting, or the direction-selective hardware interlock.
 
 ### Simulation mode
 
@@ -98,6 +101,7 @@ Use the explicit `--simulate` global option to exercise the full controller, CLI
 
 ```bash
 .venv/bin/tpb9000-testbench --simulate status
+.venv/bin/tpb9000-testbench --simulate --simulate-start between doctor
 .venv/bin/tpb9000-testbench --simulate --simulate-start between status
 .venv/bin/tpb9000-testbench --simulate test --cycles 25
 .venv/bin/tpb9000-testbench --simulate --simulate-fault stall-close test --cycles 1

@@ -32,6 +32,28 @@ class JogResult:
     reason: JogStopReason
 
 
+@dataclass(frozen=True)
+class DiagnosticReport:
+    limits: LimitState
+    initial_outputs_safe: bool
+    outputs_safe_after_stop: bool
+
+    @property
+    def issues(self) -> tuple[str, ...]:
+        issues = []
+        if not self.initial_outputs_safe:
+            issues.append("Motor outputs were active after initialization")
+        if not self.outputs_safe_after_stop:
+            issues.append("Motor outputs did not enter the stopped state")
+        if self.limits.open_active and self.limits.closed_active:
+            issues.append("Both limit switches are active")
+        return tuple(issues)
+
+    @property
+    def passed(self) -> bool:
+        return not self.issues
+
+
 class Controller:
     def __init__(self, hardware: Hardware, config: TestBenchConfig, logger: logging.Logger | None = None,
                  clock: Callable[[], float] = time.monotonic, sleeper: Callable[[float], None] = time.sleep):
@@ -44,6 +66,16 @@ class Controller:
 
     def status(self) -> LimitState:
         return self.hardware.limits()
+
+    def doctor(self) -> DiagnosticReport:
+        initial_outputs_safe = self.hardware.motor_is_stopped()
+        try:
+            self.hardware.stop()
+            limits = self.hardware.limits()
+            outputs_safe_after_stop = self.hardware.motor_is_stopped()
+            return DiagnosticReport(limits, initial_outputs_safe, outputs_safe_after_stop)
+        finally:
+            self.hardware.stop()
 
     def request_stop(self) -> None:
         self.stop_event.set()

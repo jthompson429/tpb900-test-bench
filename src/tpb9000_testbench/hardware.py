@@ -34,6 +34,7 @@ class Hardware(Protocol):
     def limits(self) -> LimitState: ...
     def drive(self, direction: Direction) -> None: ...
     def stop(self) -> None: ...
+    def motor_is_stopped(self) -> bool: ...
     def close(self) -> None: ...
 
 
@@ -89,6 +90,9 @@ class GpioHardware:
         self._lpwm.off()
         self._ren.off()
         self._len.off()
+
+    def motor_is_stopped(self) -> bool:
+        return not any((self._rpwm.value, self._lpwm.value, self._ren.value, self._len.value))
 
     def close(self) -> None:
         self.stop()
@@ -156,6 +160,9 @@ class SimulatedHardware:
     def stop(self) -> None:
         self._update()
         self._direction = None
+
+    def motor_is_stopped(self) -> bool:
+        return self._direction is None
 
     def close(self) -> None:
         self.stop()
