@@ -1,0 +1,26 @@
+max_cycles: 25
+pause_after_close_seconds: 20
+pause_after_open_seconds: 20
+max_close_travel_seconds: 30
+max_open_travel_seconds: 30
+jog_timeout_seconds: 5
+poll_interval_seconds: 0.02
+
+motor:
+  rpwm_gpio: 18
+  lpwm_gpio: 19
+  right_enable_gpio: 23
+  left_enable_gpio: 24
+  pwm_frequency_hz: 1000
+  duty_cycle: 0.65
+  open_uses_rpwm: false
+
+limits:
+  open_gpio: 5
+  closed_gpio: 6
+  active_low: true
+  bounce_time_seconds: 0.02
+
+logging:
+  directory: logs
+
