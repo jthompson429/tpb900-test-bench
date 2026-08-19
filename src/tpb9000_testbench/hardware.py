@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import time
+from collections.abc import Callable
 from typing import Protocol
 
 from .config import LimitConfig, MotorConfig
@@ -92,3 +94,49 @@ class GpioHardware:
         self.stop()
         for device in reversed(self._devices):
             device.close()
+
+
+class SimulatedHardware:
+    """In-memory mechanism model. It never imports or accesses GPIO."""
+
+    START_POSITIONS = {"open": 0.0, "between": 0.5, "closed": 1.0}
+
+    def __init__(self, open_travel_seconds: float, close_travel_seconds: float,
+                 start: str = "open", clock: Callable[[], float] = time.monotonic):
+        if start not in self.START_POSITIONS:
+            raise ValueError(f"Unknown simulated start position: {start}")
+        if open_travel_seconds <= 0 or close_travel_seconds <= 0:
+            raise ValueError("Simulated travel times must be greater than zero")
+        self._open_travel = open_travel_seconds
+        self._close_travel = close_travel_seconds
+        self._position = self.START_POSITIONS[start]
+        self._clock = clock
+        self._direction: Direction | None = None
+        self._last_update = clock()
+        self.closed = False
+
+    def _update(self) -> None:
+        now = self._clock()
+        elapsed = max(0.0, now - self._last_update)
+        if self._direction is Direction.OPEN:
+            self._position -= elapsed / self._open_travel
+        elif self._direction is Direction.CLOSE:
+            self._position += elapsed / self._close_travel
+        self._position = min(1.0, max(0.0, self._position))
+        self._last_update = now
+
+    def limits(self) -> LimitState:
+        self._update()
+        return LimitState(self._position <= 0.0, self._position >= 1.0)
+
+    def drive(self, direction: Direction) -> None:
+        self._update()
+        self._direction = direction
+
+    def stop(self) -> None:
+        self._update()
+        self._direction = None
+
+    def close(self) -> None:
+        self.stop()
+        self.closed = True

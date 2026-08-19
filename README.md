@@ -90,6 +90,18 @@ The application does not start at boot and never moves on startup. It initialize
 .venv/bin/tpb9000-testbench test --cycles 100
 ```
 
+### Simulation mode
+
+Use the explicit `--simulate` global option to exercise the full controller, CLI, logging, summaries, and limit transitions without importing `gpiozero` or touching Raspberry Pi pins:
+
+```bash
+.venv/bin/tpb9000-testbench --simulate status
+.venv/bin/tpb9000-testbench --simulate --simulate-start between status
+.venv/bin/tpb9000-testbench --simulate test --cycles 25
+```
+
+Global options must appear before the command. The simulated starting position can be `open` (default), `between`, or `closed`. Virtual OPEN/CLOSE travel times and shortened endpoint pauses are configured under `simulation` in `config/testbench.yaml`; these values have no effect on real GPIO mode. Simulation prints a prominent banner and real GPIO remains the default, so commissioning commands are never silently redirected to a model. Simulated test runs write ordinary log and summary files to `logs/` and are useful for verifying configuration and operator procedure, but they do not validate wiring, motor direction, interlocks, or mechanics.
+
 Jog commands stop at the relevant limit or requested/configured safety time. Start with sub-second/one-second jogs while watching the mechanism. A jog safety-timeout is reported as an error because reaching an endpoint is the only normal movement completion. `Ctrl+C` and SIGTERM immediately request STOP; every command also disables PWM/enables in `finally` cleanup. A failed or aborted test exits and cannot auto-resume. Starting again requires a new operator command.
 
 Configuration defaults are 25 cycles, 20-second endpoint pauses, 30-second close/open travel timeouts, a 5-second maximum jog, 20 ms polling, and 65% PWM. Tune PWM only after measuring reliable starting torque and checking driver/motor heating.
@@ -135,8 +147,10 @@ Tests do not require Raspberry Pi hardware:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -e '.[test]'
+.venv/bin/pip install '.[test]'
 .venv/bin/pytest
 ```
 
-The fake hardware tests cover config validation, target-limit stopping, timeout cleanup, impossible dual-limit failure, and a complete close/open cycle. Final acceptance still requires the staged physical commissioning above.
+Reinstall after changing source files. A regular wheel install is used intentionally because Python 3.14 ignores the hidden `.pth` filename currently produced by some setuptools editable installs.
+
+The hardware-independent tests cover config validation, target-limit stopping, timeout cleanup, impossible dual-limit failure, simulated position/limit transitions, simulated CLI operation, log generation, and complete close/open cycles. Final acceptance still requires the staged physical commissioning above.

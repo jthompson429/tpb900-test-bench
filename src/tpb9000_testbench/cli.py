@@ -3,16 +3,21 @@ from __future__ import annotations
 import argparse
 import signal
 import sys
+from dataclasses import replace
 
 from .config import ConfigurationError, load_config
 from .controller import Controller, OperatorAbort, TestBenchFault
-from .hardware import Direction, GpioHardware
+from .hardware import Direction, GpioHardware, SimulatedHardware
 from .reporting import create_test_logger, save_summary
 
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="TPB9000 feeder-cover test bench")
     p.add_argument("--config", default="config/testbench.yaml")
+    p.add_argument("--simulate", action="store_true",
+                   help="use the in-memory mechanism model; never access GPIO")
+    p.add_argument("--simulate-start", choices=("open", "between", "closed"), default="open",
+                   help="initial mechanism position in simulation (default: open)")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("status", help="show limit and motor state")
     for name in ("jog-open", "jog-close"):
@@ -37,7 +42,15 @@ def main(argv: list[str] | None = None) -> int:
     controller = None
     try:
         config = load_config(args.config)
-        hardware = GpioHardware(config.motor, config.limits)
+        if args.simulate:
+            sim = config.simulation
+            hardware = SimulatedHardware(sim.open_travel_seconds, sim.close_travel_seconds,
+                                         start=args.simulate_start)
+            config = replace(config, pause_after_close_seconds=sim.endpoint_pause_seconds,
+                             pause_after_open_seconds=sim.endpoint_pause_seconds)
+            print("SIMULATION MODE - no GPIO will be accessed")
+        else:
+            hardware = GpioHardware(config.motor, config.limits)
         controller = Controller(hardware, config)
         def stop_now(_signum: int, _frame: object) -> None:
             controller.request_stop()

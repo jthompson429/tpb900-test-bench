@@ -31,6 +31,13 @@ class LimitConfig:
 
 
 @dataclass(frozen=True)
+class SimulationConfig:
+    open_travel_seconds: float
+    close_travel_seconds: float
+    endpoint_pause_seconds: float
+
+
+@dataclass(frozen=True)
 class TestBenchConfig:
     max_cycles: int
     pause_after_close_seconds: float
@@ -41,6 +48,7 @@ class TestBenchConfig:
     poll_interval_seconds: float
     motor: MotorConfig
     limits: LimitConfig
+    simulation: SimulationConfig
     log_directory: Path
 
 
@@ -65,6 +73,7 @@ def load_config(path: str | Path) -> TestBenchConfig:
         motor = raw["motor"]
         limits = raw["limits"]
         logging = raw["logging"]
+        simulation = raw["simulation"]
     except (OSError, TypeError, KeyError, yaml.YAMLError) as exc:
         raise ConfigurationError(f"Cannot load {path}: {exc}") from exc
 
@@ -93,5 +102,10 @@ def load_config(path: str | Path) -> TestBenchConfig:
         poll_interval_seconds=_positive(raw, "poll_interval_seconds"),
         motor=MotorConfig(**{**motor, "duty_cycle": duty}),
         limits=LimitConfig(**limits),
+        simulation=SimulationConfig(
+            open_travel_seconds=_positive(simulation, "open_travel_seconds"),
+            close_travel_seconds=_positive(simulation, "close_travel_seconds"),
+            endpoint_pause_seconds=_nonnegative(simulation, "endpoint_pause_seconds"),
+        ),
         log_directory=log_dir,
     )
