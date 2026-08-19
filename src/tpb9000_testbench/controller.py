@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import threading
 import time
 from collections.abc import Callable
@@ -10,7 +11,7 @@ from enum import Enum
 
 from .config import TestBenchConfig
 from .hardware import Direction, Hardware, LimitState
-from .reporting import TestResult
+from .reporting import RunProvenance, TestResult
 
 
 class TestBenchFault(RuntimeError):
@@ -141,12 +142,22 @@ class Controller:
         finally:
             self.hardware.stop()
 
-    def run_test(self, cycles: int) -> TestResult:
+    def run_test(self, cycles: int, provenance: RunProvenance | None = None) -> TestResult:
         if cycles <= 0:
             raise ValueError("cycles must be greater than zero")
         self.stop_event.clear()
-        result = TestResult(cycles)
+        result = TestResult(cycles, provenance=provenance)
         self.logger.info("Test Started; Target Cycles: %d", cycles)
+        if provenance:
+            self.logger.info("Backend: %s", provenance.backend)
+            self.logger.info("Hostname: %s", provenance.hostname)
+            self.logger.info("Application Version: %s", provenance.application_version)
+            self.logger.info("Configuration File: %s", provenance.configuration_file)
+            if provenance.backend == "SIMULATION":
+                self.logger.info("Simulation Start: %s; Fault: %s",
+                                 provenance.simulation_start, provenance.simulation_fault)
+            self.logger.info("Effective Configuration: %s",
+                             json.dumps(provenance.effective_configuration, sort_keys=True))
         try:
             self._validate(self.hardware.limits())
             for cycle in range(1, cycles + 1):

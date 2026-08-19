@@ -2,15 +2,55 @@ from __future__ import annotations
 
 import json
 import logging
+import socket
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from statistics import mean
 
+from . import __version__
+from .config import TestBenchConfig
+
+
+@dataclass(frozen=True)
+class RunProvenance:
+    backend: str
+    hostname: str
+    application_version: str
+    configuration_file: str
+    effective_configuration: dict
+    simulation_fault: str | None = None
+    simulation_start: str | None = None
+
+
+def _jsonable(value):
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _jsonable(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_jsonable(item) for item in value]
+    return value
+
+
+def build_run_provenance(config: TestBenchConfig, config_path: str | Path, *, backend: str,
+                         simulation_fault: str | None = None, simulation_start: str | None = None,
+                         hostname: str | None = None) -> RunProvenance:
+    return RunProvenance(
+        backend=backend,
+        hostname=hostname or socket.gethostname(),
+        application_version=__version__,
+        configuration_file=str(Path(config_path).resolve()),
+        effective_configuration=_jsonable(asdict(config)),
+        simulation_fault=simulation_fault,
+        simulation_start=simulation_start,
+    )
+
 
 @dataclass
 class TestResult:
     requested_cycles: int
+    provenance: RunProvenance | None = None
     started_at: datetime = field(default_factory=datetime.now)
     completed_cycles: int = 0
     close_times: list[float] = field(default_factory=list)
@@ -36,6 +76,7 @@ class TestResult:
             "result": self.result,
             "started_at": self.started_at.isoformat(),
             "ended_at": end.isoformat(),
+            "provenance": asdict(self.provenance) if self.provenance else None,
         }
 
 

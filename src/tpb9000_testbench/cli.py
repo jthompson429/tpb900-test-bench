@@ -8,7 +8,7 @@ from dataclasses import replace
 from .config import ConfigurationError, load_config
 from .controller import Controller, OperatorAbort, TestBenchFault
 from .hardware import Direction, GpioHardware, SimulatedHardware
-from .reporting import create_test_logger, save_summary
+from .reporting import build_run_provenance, create_test_logger, save_summary
 
 
 def parser() -> argparse.ArgumentParser:
@@ -90,7 +90,14 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         logger, log_path = create_test_logger(config.log_directory)
         controller.logger = logger
-        result = controller.run_test(args.cycles or config.max_cycles)
+        provenance = build_run_provenance(
+            config,
+            args.config,
+            backend="SIMULATION" if args.simulate else "GPIO",
+            simulation_fault=args.simulate_fault if args.simulate else None,
+            simulation_start=args.simulate_start if args.simulate else None,
+        )
+        result = controller.run_test(args.cycles or config.max_cycles, provenance=provenance)
         summary = save_summary(result, log_path)
         print(f"Log: {log_path}\nSummary: {summary}")
         return 0 if result.result == "PASS" else 2

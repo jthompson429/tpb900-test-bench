@@ -125,7 +125,7 @@ Jog commands stop normally at the relevant limit or when an explicit `--seconds`
 
 Configuration defaults are 25 cycles, 20-second endpoint pauses, 30-second close/open travel timeouts, a 5-second maximum jog, 20 ms polling, and 65% PWM. Tune PWM only after measuring reliable starting torque and checking driver/motor heating.
 
-Full logs and `*-summary.json` files appear in `logs/`. The summary contains cycle counts, total duration, min/mean/max travel times in both directions, final result, and fault reason.
+Full logs and `*-summary.json` files appear in `logs/`. The summary contains cycle counts, total duration, min/mean/max travel times in both directions, final result, and fault reason. Every endurance run also records provenance: `GPIO` or `SIMULATION` backend, hostname, application version, resolved configuration-file path, effective configuration snapshot, and—when simulated—the starting position and injected fault. Check the backend field before treating a PASS result as physical test evidence.
 
 ## Commissioning
 
