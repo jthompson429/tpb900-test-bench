@@ -86,11 +86,14 @@ The application does not start at boot and never moves on startup. It initialize
 
 ```bash
 .venv/bin/tpb9000-testbench status
+.venv/bin/tpb9000-testbench doctor
 .venv/bin/tpb9000-testbench jog-open --seconds 1
 .venv/bin/tpb9000-testbench jog-close --seconds 1
 .venv/bin/tpb9000-testbench test
 .venv/bin/tpb9000-testbench test --cycles 100
 ```
+
+Run `doctor` after installation and before any jog. It loads and validates the configuration, initializes the selected backend, confirms that all commanded motor outputs are OFF, applies STOP and confirms they remain OFF, reads both limit inputs, and rejects the impossible both-active state. It never issues an OPEN or CLOSE drive command. `BETWEEN LIMITS` is a valid preflight result. A passing doctor check validates software-visible GPIO initialization only; it does not prove motor direction, contact ratings, level shifting, or the direction-selective hardware interlock.
 
 ### Simulation mode
 
@@ -98,6 +101,7 @@ Use the explicit `--simulate` global option to exercise the full controller, CLI
 
 ```bash
 .venv/bin/tpb9000-testbench --simulate status
+.venv/bin/tpb9000-testbench --simulate --simulate-start between doctor
 .venv/bin/tpb9000-testbench --simulate --simulate-start between status
 .venv/bin/tpb9000-testbench --simulate test --cycles 25
 .venv/bin/tpb9000-testbench --simulate --simulate-fault stall-close test --cycles 1
@@ -121,7 +125,7 @@ Jog commands stop normally at the relevant limit or when an explicit `--seconds`
 
 Configuration defaults are 25 cycles, 20-second endpoint pauses, 30-second close/open travel timeouts, a 5-second maximum jog, 20 ms polling, and 65% PWM. Tune PWM only after measuring reliable starting torque and checking driver/motor heating.
 
-Full logs and `*-summary.json` files appear in `logs/`. The summary contains cycle counts, total duration, min/mean/max travel times in both directions, final result, and fault reason.
+Full logs and `*-summary.json` files appear in `logs/`. The summary contains cycle counts, total duration, min/mean/max travel times in both directions, final result, and fault reason. Every endurance run also records provenance: `GPIO` or `SIMULATION` backend, hostname, application version, resolved configuration-file path, effective configuration snapshot, and—when simulated—the starting position and injected fault. Check the backend field before treating a PASS result as physical test evidence.
 
 ## Commissioning
 
@@ -168,4 +172,4 @@ python3 -m venv .venv
 
 Reinstall after changing source files. A regular wheel install is used intentionally because Python 3.14 ignores the hidden `.pth` filename currently produced by some setuptools editable installs.
 
-The hardware-independent tests cover config validation, target-limit stopping, timeout cleanup, impossible dual-limit failure, requested-duration jogs, simulated position/limit transitions, injected stalls/missing limits, simulated CLI operation, PASS/FAIL log generation, and complete close/open cycles. Final acceptance still requires the staged physical commissioning above.
+The hardware-independent tests cover config validation, target-limit stopping, timeout cleanup, impossible dual-limit failure, requested-duration jogs, simulated position/limit transitions, injected stalls/missing limits, simulated CLI operation, PASS/FAIL log generation, complete close/open cycles, and the real `GpioHardware` adapter through gpiozero's MockFactory. The adapter tests verify safe startup/stop outputs, NC input polarity, configured PWM direction, and enable behavior without accessing Pi hardware. Final acceptance still requires the staged physical commissioning above.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import threading
 import time
 from collections.abc import Callable
@@ -10,7 +11,7 @@ from enum import Enum
 
 from .config import TestBenchConfig
 from .hardware import Direction, Hardware, LimitState
-from .reporting import TestResult
+from .reporting import RunProvenance, TestResult
 
 
 class TestBenchFault(RuntimeError):
@@ -32,6 +33,28 @@ class JogResult:
     reason: JogStopReason
 
 
+@dataclass(frozen=True)
+class DiagnosticReport:
+    limits: LimitState
+    initial_outputs_safe: bool
+    outputs_safe_after_stop: bool
+
+    @property
+    def issues(self) -> tuple[str, ...]:
+        issues = []
+        if not self.initial_outputs_safe:
+            issues.append("Motor outputs were active after initialization")
+        if not self.outputs_safe_after_stop:
+            issues.append("Motor outputs did not enter the stopped state")
+        if self.limits.open_active and self.limits.closed_active:
+            issues.append("Both limit switches are active")
+        return tuple(issues)
+
+    @property
+    def passed(self) -> bool:
+        return not self.issues
+
+
 class Controller:
     def __init__(self, hardware: Hardware, config: TestBenchConfig, logger: logging.Logger | None = None,
                  clock: Callable[[], float] = time.monotonic, sleeper: Callable[[float], None] = time.sleep):
@@ -44,6 +67,16 @@ class Controller:
 
     def status(self) -> LimitState:
         return self.hardware.limits()
+
+    def doctor(self) -> DiagnosticReport:
+        initial_outputs_safe = self.hardware.motor_is_stopped()
+        try:
+            self.hardware.stop()
+            limits = self.hardware.limits()
+            outputs_safe_after_stop = self.hardware.motor_is_stopped()
+            return DiagnosticReport(limits, initial_outputs_safe, outputs_safe_after_stop)
+        finally:
+            self.hardware.stop()
 
     def request_stop(self) -> None:
         self.stop_event.set()
@@ -109,12 +142,22 @@ class Controller:
         finally:
             self.hardware.stop()
 
-    def run_test(self, cycles: int) -> TestResult:
+    def run_test(self, cycles: int, provenance: RunProvenance | None = None) -> TestResult:
         if cycles <= 0:
             raise ValueError("cycles must be greater than zero")
         self.stop_event.clear()
-        result = TestResult(cycles)
+        result = TestResult(cycles, provenance=provenance)
         self.logger.info("Test Started; Target Cycles: %d", cycles)
+        if provenance:
+            self.logger.info("Backend: %s", provenance.backend)
+            self.logger.info("Hostname: %s", provenance.hostname)
+            self.logger.info("Application Version: %s", provenance.application_version)
+            self.logger.info("Configuration File: %s", provenance.configuration_file)
+            if provenance.backend == "SIMULATION":
+                self.logger.info("Simulation Start: %s; Fault: %s",
+                                 provenance.simulation_start, provenance.simulation_fault)
+            self.logger.info("Effective Configuration: %s",
+                             json.dumps(provenance.effective_configuration, sort_keys=True))
         try:
             self._validate(self.hardware.limits())
             for cycle in range(1, cycles + 1):

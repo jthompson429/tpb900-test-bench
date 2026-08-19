@@ -8,7 +8,7 @@ from dataclasses import replace
 from .config import ConfigurationError, load_config
 from .controller import Controller, OperatorAbort, TestBenchFault
 from .hardware import Direction, GpioHardware, SimulatedHardware
-from .reporting import create_test_logger, save_summary
+from .reporting import build_run_provenance, create_test_logger, save_summary
 
 
 def parser() -> argparse.ArgumentParser:
@@ -22,6 +22,7 @@ def parser() -> argparse.ArgumentParser:
                    help="inject one simulation-only failure (default: none)")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("status", help="show limit and motor state")
+    sub.add_parser("doctor", help="run a non-moving configuration and GPIO preflight")
     for name in ("jog-open", "jog-close"):
         jog = sub.add_parser(name, help=f"move cautiously toward {name[4:].upper()}")
         jog.add_argument("--seconds", type=float, help="shorter duration; default is configured safety timeout")
@@ -36,6 +37,21 @@ def print_status(controller: Controller) -> None:
     print(f"OPEN limit:     {'active' if state.open_active else 'inactive'}")
     print(f"CLOSED limit:   {'active' if state.closed_active else 'inactive'}")
     print(f"Mechanism state: {state.mechanism_state}\nMotor: STOPPED")
+
+
+def print_doctor(controller: Controller, simulated: bool) -> bool:
+    report = controller.doctor()
+    backend = "SIMULATED" if simulated else "RASPBERRY PI GPIO"
+    print("\nPreflight checks")
+    print(f"Backend initialized:       PASS ({backend})")
+    print(f"Initial motor outputs OFF: {'PASS' if report.initial_outputs_safe else 'FAIL'}")
+    print(f"STOP leaves outputs OFF:   {'PASS' if report.outputs_safe_after_stop else 'FAIL'}")
+    print(f"Limit state plausible:     {'PASS' if not (report.limits.open_active and report.limits.closed_active) else 'FAIL'}")
+    print(f"Mechanism state:           {report.limits.mechanism_state}")
+    for issue in report.issues:
+        print(f"FAULT: {issue}")
+    print(f"Doctor result:             {'PASS' if report.passed else 'FAIL'}")
+    return report.passed
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -65,6 +81,8 @@ def main(argv: list[str] | None = None) -> int:
         print_status(controller)
         if args.command == "status":
             return 0
+        if args.command == "doctor":
+            return 0 if print_doctor(controller, args.simulate) else 2
         if args.command.startswith("jog-"):
             direction = Direction.OPEN if args.command == "jog-open" else Direction.CLOSE
             result = controller.jog(direction, args.seconds)
@@ -72,7 +90,14 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         logger, log_path = create_test_logger(config.log_directory)
         controller.logger = logger
-        result = controller.run_test(args.cycles or config.max_cycles)
+        provenance = build_run_provenance(
+            config,
+            args.config,
+            backend="SIMULATION" if args.simulate else "GPIO",
+            simulation_fault=args.simulate_fault if args.simulate else None,
+            simulation_start=args.simulate_start if args.simulate else None,
+        )
+        result = controller.run_test(args.cycles or config.max_cycles, provenance=provenance)
         summary = save_summary(result, log_path)
         print(f"Log: {log_path}\nSummary: {summary}")
         return 0 if result.result == "PASS" else 2

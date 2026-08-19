@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from tpb9000_testbench.cli import main
@@ -25,7 +26,16 @@ def test_simulated_endurance_cli(tmp_path, monkeypatch):
     monkeypatch.setattr("tpb9000_testbench.cli.signal.signal", lambda *_args: None)
     assert main(["--config", str(config_path), "--simulate", "test", "--cycles", "1"]) == 0
     assert len(list((tmp_path / "logs").glob("*.log"))) == 1
-    assert len(list((tmp_path / "logs").glob("*-summary.json"))) == 1
+    summaries = list((tmp_path / "logs").glob("*-summary.json"))
+    assert len(summaries) == 1
+    provenance = json.loads(summaries[0].read_text())["provenance"]
+    assert provenance["backend"] == "SIMULATION"
+    assert provenance["simulation_fault"] == "none"
+    assert provenance["simulation_start"] == "open"
+    assert provenance["application_version"]
+    assert provenance["hostname"]
+    assert provenance["configuration_file"] == str(config_path.resolve())
+    assert provenance["effective_configuration"]["max_close_travel_seconds"] == 0.75
 
 
 def test_requested_simulated_jog_is_successful(monkeypatch, capsys):
@@ -46,11 +56,33 @@ def test_simulated_stall_produces_failed_summary(tmp_path, monkeypatch):
         "test", "--cycles", "1",
     ])
     assert code == 2
-    summary = next((tmp_path / "logs").glob("*-summary.json")).read_text()
-    assert '"result": "FAIL"' in summary
-    assert "CLOSE limit not reached" in summary
+    summary = json.loads(next((tmp_path / "logs").glob("*-summary.json")).read_text())
+    assert summary["result"] == "FAIL"
+    assert "CLOSE limit not reached" in summary["fault_reason"]
+    assert summary["provenance"]["backend"] == "SIMULATION"
+    assert summary["provenance"]["simulation_fault"] == "stall-close"
 
 
 def test_fault_injection_requires_simulation(capsys):
     assert main(["--config", CONFIG, "--simulate-fault", "stall-close", "status"]) == 2
     assert "requires --simulate" in capsys.readouterr().err
+
+
+def test_simulated_doctor_passes_between_limits(monkeypatch, capsys):
+    monkeypatch.setattr("tpb9000_testbench.cli.signal.signal", lambda *_args: None)
+    code = main(["--config", CONFIG, "--simulate", "--simulate-start", "between", "doctor"])
+    assert code == 0
+    output = capsys.readouterr().out
+    assert "Doctor result:             PASS" in output
+    assert "Mechanism state:           BETWEEN LIMITS" in output
+
+
+def test_simulated_doctor_fails_both_limits(monkeypatch, capsys):
+    monkeypatch.setattr("tpb9000_testbench.cli.signal.signal", lambda *_args: None)
+    code = main([
+        "--config", CONFIG, "--simulate", "--simulate-fault", "both-limits-active", "doctor",
+    ])
+    assert code == 2
+    output = capsys.readouterr().out
+    assert "Doctor result:             FAIL" in output
+    assert "FAULT: Both limit switches are active" in output

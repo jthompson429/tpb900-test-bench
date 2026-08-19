@@ -11,7 +11,7 @@ dependencies = ["PyYAML>=6.0,<7"]
 
 [project.optional-dependencies]
 pi = ["gpiozero>=2.0,<3"]
-test = ["pytest>=8,<9"]
+test = ["pytest>=8,<9", "gpiozero>=2.0,<3"]
 
 [project.scripts]
 tpb9000-testbench = "tpb9000_testbench.cli:main"
@@ -25,4 +25,3 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-
